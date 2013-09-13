@@ -1,0 +1,166 @@
+------------------------------------------------
+--  HTTPNet API
+--  By PixelToast
+------------------------------------------------
+
+------------------------------------------------
+--  eroutine API
+------------------------------------------------
+
+local eroutine=eroutine
+if not eroutine then
+	eroutine={}
+	eroutine.routines={}
+	eroutine.filters={}
+	local oldyield=coroutine.yield
+	local str_sub=string.sub
+	local pcall=pcall
+	local id=os.getComputerID()
+	function coroutine.yield(filter)
+		while true do
+			local p={oldyield()}
+			for k,v in pairs(eroutine.routines) do
+				local f=eroutine.filters[k]
+				if f==p or not f then
+					local a,b=pcall(v,unpack(p))
+					if not a then
+						eroutine.routines[k]=nil
+						error(b,2)
+					end
+				end
+			end
+			local fe=p[1]
+			if fe==filter or fe=="terminate" or not filter then
+				return unpack(p)
+			end
+		end
+	end
+	function add(func,name,filter)
+		local n=name or func
+		eroutine.routines[n]=func
+		eroutine.filters[n]=filter
+		return n
+	end
+	function remove(name)
+		eroutine.routines[name]=nil
+		eroutine.filters[name]=nil
+	end
+end
+
+------------------------------------------------
+-- main API
+------------------------------------------------
+
+local function salt()
+	local out=""
+	for l1=1,16 do
+		local i=math.random(0,15)
+		out=out..string.char(i+(math.floor(i/10)*7)+48)
+	end
+	return out
+end
+local function serialize(...)
+	local t={...}
+	local out=""
+	for k,v in pairs(t) do
+		v=tostring(v)
+		for c in v:gmatch(".") do
+			if c=="\\" then
+				out=out.."\\\\"
+			elseif c=="," then
+				out=out.."\\,"
+			else
+				out=out..c
+			end
+		end
+		if k~=#t then
+			out=out..","
+		end
+	end
+	return "httpnet,"..out
+end
+local function unserialize(t)
+	local elevel=0
+	local out={}
+	local s=""
+	for char in t:gmatch(".") do
+		if char=="\\" then
+			if clevel==0 then
+				clevel=1
+			else
+				s=s.."\\"
+				clevel=0
+			end
+		elseif char=="," then
+			if clevel==0 then
+				table.insert(out,s)
+				s=""
+			else
+				s=s..","
+				clevel=0
+			end
+		else
+			s=s..char
+			clevel=0
+		end
+	end
+	table.insert(out,s)
+	if out[1]=="httpnet" then
+		table.remove(out,1)
+		return out
+	else
+		return {}
+	end
+end
+local rec={}
+local snd={}
+local mcr={}
+function send(pr,sid,data)
+	local s=salt()
+	snd[s]=true
+	http.post("http://"..host..":"..tostring(port).."/send",serialize(s,id,sid,data))
+end
+function get(pr,timeout)
+	request()
+	local timer
+	if timeout then
+		timer=os.startTimer(timeout)
+	end
+	while true do
+		local p={os.pullEvent()}
+		if p[1]=="httpnet_message" then
+			return p[2],p[3]
+		elseif p[1]=="timer" and p[2]==timer then
+			return
+		end
+	end
+end
+function close(pr)
+	rec[pr.salt]=nil
+end
+http.post("http://"..t.host..":"..t.port.."/receive",serialize(t.id,t.salt))
+function new(h,p,i)
+	local t={
+		send=send,
+		request=request,
+		get=get,
+		host=h or "localhost",
+		port=tostring(p or 1337),
+		id=tostring(i or os.getComputerID()),
+		salt=salt()
+	}
+	rec[t.salt]=t
+end
+eroutine.add(function(...)
+	local p={...}
+	if p[1]=="http_success" then
+		
+	elseif p[1]=="http_failure" then
+		local ot={}
+		for k,v in pairs(dat) do
+			table.insert(ot,v.id)
+			table.insert(ot,k)
+		end
+		http.post("http://"..v.host..":"..v.port.."/mreceive",serialize(unpack(ot)))
+	end
+end,"httpnet")
