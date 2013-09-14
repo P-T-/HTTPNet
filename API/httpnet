@@ -3,8 +3,14 @@
 --  By PixelToast
 --
 --  TODO:
---    finish the damn thing
---    
+--    retry on http_failure
+--    clean up
+--    comments
+--    multiple host support
+--    multiple channel support
+--    not using eroutine
+--    check if connection was sucessful
+--    random number in (what will be) timeout to make sure it does not receive multiple times at once
 ------------------------------------------------
 
 ------------------------------------------------
@@ -60,18 +66,11 @@ end
 -- main API
 ------------------------------------------------
 
-local function salt()
-	local out=""
-	for l1=1,16 do
-		local i=math.random(0,15)
-		out=out..string.format("%X",i)
-	end
-	return out
-end
 local function serialize(...)
 	local t={...}
 	local out=""
 	for k,v in pairs(t) do
+		v=tostring(v)
 		for c in v:gmatch(".") do
 			if c=="\\" then
 				out=out.."\\\\"
@@ -85,7 +84,7 @@ local function serialize(...)
 			out=out..","
 		end
 	end
-	return "httpnet,"..out
+	return out
 end
 local function unserialize(t)
 	local elevel=0
@@ -113,27 +112,14 @@ local function unserialize(t)
 		end
 	end
 	table.insert(out,s)
-	if out[1]=="httpnet" then
-		table.remove(out,1)
-		return out
-	else
-		return {}
-	end
+	return out
 end
-local rec={}
-local snd={}
-local mcr={}
-local cls={}
 local host
 local id
-local sa
-function send(pr,sid,data)
-	local sa=salt()
-	snd[sa]=true
-	http.post(host.."send",serialize(s,id,sid,data))
+function send(sid,data)
+	http.request(host.."send",serialize(id,sid,data))
 end
-function get(pr,timeout)
-	request()
+function get(timeout)
 	local timer
 	if timeout then
 		timer=os.startTimer(timeout)
@@ -148,20 +134,33 @@ function get(pr,timeout)
 	end
 end
 function close()
-	cls[sa]=true
+	host,id=nil
+end
+local function receive()
+	http.request(host.."receive",serialize(id))
 end
 function setHost(h,p,i)
-	host="http://"..tostring(h or "localhost")..":"..tostring(p or 1337).."/",
-	id=tostring(i or os.getComputerID()),
+	host="http://"..tostring(h or "localhost")..":"..tostring(p or 1337).."/"
+	id=tostring(i or os.getComputerID())
+	receive()
 end
 eroutine.add(function(...)
 	local p={...}
 	if p[1]=="http_success" then
-		
+		if string.sub(p[2],1,#host)==host then
+			eroutine.eatEvent()
+			local text=p[3].readAll()
+			if text~="" and not receiveing then
+				local t=unserialize(text)
+				if t[1] then
+					os.queueEvent("httpnet_message",t[1],t[2])
+					receive()
+				end
+			end
+		end
 	elseif p[1]=="http_failure" then
-		local s=salt()
-		mcr[s]=true
-		http.post(host)
-		eroutine.eatEvent()
+		if string.sub(p[2],1,#host)==host then
+			eroutine.eatEvent()
+		end
 	end
 end,"httpnet")

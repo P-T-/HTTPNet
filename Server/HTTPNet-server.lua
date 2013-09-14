@@ -11,7 +11,6 @@
 --    error checking
 --    timeouts
 --    clean up a bit
---    "salt" collision detection
 ------------------------------------------------
 
 ------------------------------------------------
@@ -59,7 +58,7 @@ local function serialize(...)
 			out=out..","
 		end
 	end
-	return "httpnet,"..out
+	return out
 end
 local function unserialize(t)
 	local elevel=0
@@ -87,12 +86,7 @@ local function unserialize(t)
 		end
 	end
 	table.insert(out,s)
-	if out[1]=="httpnet" then
-		table.remove(out,1)
-		return out
-	else
-		return {}
-	end
+	return out
 end
 local function prochead(cl)
 	local head={}
@@ -109,7 +103,7 @@ local queue={}
 local function close(cl)
 	cl.s:close()
 	cl.closed=true
-	queue[cl.id]=nil
+	queue[cl.i]=nil
 	cli[cl.i]=nil
 end
 local function serve(cl,dat)
@@ -140,41 +134,24 @@ while true do
 			else
 				local s,e=cl.s:receive(cl.postlen)
 				while s do
-					print(s)
 					if cl.postlen then
 						local t=unserialize(s)
 						if not t then
 							close(cl)
 						else
-							if cl.uri=="send" and t[4] then
+							if cl.uri=="send" and t[3] then
+								print("'"..serialize(t[1]).."' is sending '"..serialize(t[3]).."' to '"..serialize(t[2]).."'")
 								for k,v in pairs(queue) do
-									if v.id==t[3] then
-										serve(v,serialize("rec",v.sl,t[2],t[4]))
+									if v.id==t[2] then
+										serve(v,serialize(t[1],t[3]))
+										queue[k]=nil
 									end
 								end
-								serve(cl,"snd",t[1])
-							elseif cl.uri=="receive" and t[2] then
-								if queue[t[1]] then
-									close(queue[t[1]])
-								end
-								cl.id=t[2]
-								cl.sl=t[1]
-								queue[t[1]]=cl
-							elseif cl.uri=="mreceive" then
-								if table.maxn(t)%2==0 then
-									local r
-									local s=t[1]
-									table.remove(t,1)
-									for k,v in pairs(t) do
-										if not queue[v] then
-											r=v
-											break
-										end
-									end
-									serve(cl,serialize("mcr",s,r))
-								else
-									close(cl)
-								end
+								serve(cl,"")
+							elseif cl.uri=="receive" and t[1] then
+								print("'"..serialize(t[1]).."' is receiving")
+								cl.id=t[1]
+								table.insert(queue,cl)
 							else
 								close(cl)
 							end
