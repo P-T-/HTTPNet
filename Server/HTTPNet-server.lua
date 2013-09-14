@@ -6,7 +6,6 @@
 --
 --  TODO:
 --    DOS protection
---    allow multiple client to receive on one channel
 --    comments
 --    moar config options
 --    error checking
@@ -114,7 +113,7 @@ local function close(cl)
 	cli[cl.i]=nil
 end
 local function serve(cl,dat)
-	cl.s:send("HTTP/1.1 300 OK\r\nContent-Length: "..dat:len().."\r\n\r\n"..dat)
+	cl.s:send("HTTP/1.1 337 Potato\r\nContent-Length: "..dat:len().."\r\n\r\n"..dat)
 	close(cl)
 end
 while true do
@@ -149,7 +148,7 @@ while true do
 						else
 							if cl.uri=="send" and t[4] then
 								for k,v in pairs(queue) do
-									if v.id=t[3] then
+									if v.id==t[3] then
 										serve(v,serialize("rec",v.sl,t[2],t[4]))
 									end
 								end

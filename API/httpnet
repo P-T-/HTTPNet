@@ -1,6 +1,10 @@
 ------------------------------------------------
 --  HTTPNet API
 --  By PixelToast
+--
+--  TODO:
+--    finish the damn thing
+--    
 ------------------------------------------------
 
 ------------------------------------------------
@@ -12,13 +16,18 @@ if not eroutine then
 	eroutine={}
 	eroutine.routines={}
 	eroutine.filters={}
+	local ate=false
 	local oldyield=coroutine.yield
 	local str_sub=string.sub
 	local pcall=pcall
 	local id=os.getComputerID()
+	function eroutine.eatEvent()
+		ate=true
+	end
 	function coroutine.yield(filter)
 		while true do
 			local p={oldyield()}
+			ate=false
 			for k,v in pairs(eroutine.routines) do
 				local f=eroutine.filters[k]
 				if f==p or not f then
@@ -30,18 +39,18 @@ if not eroutine then
 				end
 			end
 			local fe=p[1]
-			if fe==filter or fe=="terminate" or not filter then
+			if not ate and (fe==filter or fe=="terminate" or not filter) then
 				return unpack(p)
 			end
 		end
 	end
-	function add(func,name,filter)
+	function eroutine.add(func,name,filter)
 		local n=name or func
 		eroutine.routines[n]=func
 		eroutine.filters[n]=filter
 		return n
 	end
-	function remove(name)
+	function eroutine.remove(name)
 		eroutine.routines[name]=nil
 		eroutine.filters[name]=nil
 	end
@@ -55,7 +64,7 @@ local function salt()
 	local out=""
 	for l1=1,16 do
 		local i=math.random(0,15)
-		out=out..string.char(i+(math.floor(i/10)*7)+48)
+		out=out..string.format("%X",i)
 	end
 	return out
 end
@@ -63,7 +72,6 @@ local function serialize(...)
 	local t={...}
 	local out=""
 	for k,v in pairs(t) do
-		v=tostring(v)
 		for c in v:gmatch(".") do
 			if c=="\\" then
 				out=out.."\\\\"
@@ -115,10 +123,14 @@ end
 local rec={}
 local snd={}
 local mcr={}
+local cls={}
+local host
+local id
+local sa
 function send(pr,sid,data)
-	local s=salt()
-	snd[s]=true
-	http.post("http://"..host..":"..tostring(port).."/send",serialize(s,id,sid,data))
+	local sa=salt()
+	snd[sa]=true
+	http.post(host.."send",serialize(s,id,sid,data))
 end
 function get(pr,timeout)
 	request()
@@ -135,32 +147,21 @@ function get(pr,timeout)
 		end
 	end
 end
-function close(pr)
-	rec[pr.salt]=nil
+function close()
+	cls[sa]=true
 end
-http.post("http://"..t.host..":"..t.port.."/receive",serialize(t.id,t.salt))
-function new(h,p,i)
-	local t={
-		send=send,
-		request=request,
-		get=get,
-		host=h or "localhost",
-		port=tostring(p or 1337),
-		id=tostring(i or os.getComputerID()),
-		salt=salt()
-	}
-	rec[t.salt]=t
+function setHost(h,p,i)
+	host="http://"..tostring(h or "localhost")..":"..tostring(p or 1337).."/",
+	id=tostring(i or os.getComputerID()),
 end
 eroutine.add(function(...)
 	local p={...}
 	if p[1]=="http_success" then
 		
 	elseif p[1]=="http_failure" then
-		local ot={}
-		for k,v in pairs(dat) do
-			table.insert(ot,v.id)
-			table.insert(ot,k)
-		end
-		http.post("http://"..v.host..":"..v.port.."/mreceive",serialize(unpack(ot)))
+		local s=salt()
+		mcr[s]=true
+		http.post(host)
+		eroutine.eatEvent()
 	end
 end,"httpnet")
