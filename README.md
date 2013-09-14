@@ -23,7 +23,7 @@ the id can be a string!<br><br>
 
 
 <code>httpnet.get([timeout])</code><br>
-will wait for the httpnet_message, and return id,message<br><br>
+will wait for the httpnet_message and returns id,message<br><br>
 
 
 <code>httpnet.send(id,data)</code><br>
