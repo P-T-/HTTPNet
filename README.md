@@ -34,4 +34,4 @@ sends a message, stupid<br><br>
 
 <code>httpnet.close()</code><br>
 prevents you from sending or receiving<br>
-warning: this will currently leak a http_sucess when it times out (when timeouts are implemented)<br><br>
+warning: this will currently leak a http_sucess when it times out<br><br>
