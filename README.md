@@ -1,4 +1,4 @@
-![ScreenShot](http://i.imgur.com/Pd6fcpa.png)
+<p align="center"><img src="http://i.imgur.com/FeNFuvI.png"></p>
 
 A ComputerCraft API that allows instant socket like connections using HTTP<br>
 Communication over HTTP has been done before, but this one does not spam yet is still instant<br>
