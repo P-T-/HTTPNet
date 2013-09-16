@@ -3,14 +3,11 @@
 --  By PixelToast
 --
 --  TODO:
---    retry on http_failure
 --    clean up
 --    comments
 --    multiple host support
 --    multiple channel support
 --    not using eroutine
---    check if connection was sucessful
---    random number in (what will be) timeout to make sure it does not receive multiple times at once
 ------------------------------------------------
 
 ------------------------------------------------
@@ -116,6 +113,7 @@ local function unserialize(t)
 end
 local host
 local id
+local uid
 function send(sid,data)
 	http.request(host.."send",serialize(id,sid,data))
 end
@@ -137,30 +135,53 @@ function close()
 	host,id=nil
 end
 local function receive()
-	http.request(host.."receive",serialize(id))
+	http.request(host.."receive?"..uid,serialize(id))
 end
 function setHost(h,p,i)
-	host="http://"..tostring(h or "localhost")..":"..tostring(p or 1337).."/"
-	id=tostring(i or os.getComputerID())
-	receive()
+	close()
+	local shost="http://"..tostring(h or "localhost")..":"..tostring(p or 1337).."/"
+	local sid=tostring(i or os.getComputerID())
+	local s=http.get(shost.."ping")
+	if s then
+		local t=unserialize(s.readAll())
+		if t then
+			if t[1]=="pong" and t[2] then
+				host=shost
+				id=sid
+				uid=t[2]
+				receive()
+				return true
+			end
+		end
+	end
+	close()
+	return false
 end
 eroutine.add(function(...)
 	local p={...}
 	if p[1]=="http_success" then
-		if string.sub(p[2],1,#host)==host then
-			eroutine.eatEvent()
-			local text=p[3].readAll()
-			if text~="" and not receiveing then
-				local t=unserialize(text)
-				if t[1] then
-					os.queueEvent("httpnet_message",t[1],t[2])
-					receive()
+		if host then
+			if string.sub(p[2],1,#host)==host then
+				eroutine.eatEvent()
+				local text=p[3].readAll()
+				if text~="" then
+					local t=unserialize(text)
+					if t[1]==uid then
+						if t[2]=="msg" then
+							os.queueEvent("httpnet_message",t[3],t[4])
+							receive()
+						elseif t[2]=="timeout" then
+							receive()
+						end
+					end
 				end
 			end
 		end
 	elseif p[1]=="http_failure" then
-		if string.sub(p[2],1,#host)==host then
-			eroutine.eatEvent()
+		if host then
+			if string.sub(p[2],1,#host)==host then
+				eroutine.eatEvent()
+			end
 		end
 	end
 end,"httpnet")
