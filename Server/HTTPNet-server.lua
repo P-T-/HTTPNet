@@ -19,12 +19,34 @@
 
 local config={
 	port=1337,
+	
+	colors=false, -- ANSI colors dont work on windows :/
+	rainbow=false, -- i got bored
 }
 
 ------------------------------------------------
 -- Server
 ------------------------------------------------
 
+local colors={
+	clear="\27[0m",
+	red="\27[31m",
+	green="\27[32m",
+	yellow="\27[33m",
+	blue="\27[34m",
+}
+local print=print
+if config.rainbow then
+	local oprint=print
+	function print(str)
+		oprint(str:gsub(".",function(s) return "\27["..math.random(31,36).."m"..s end).."\27[0m")
+	end
+end 
+if not config.colors then
+	for k,v in pairs(colors) do
+		colors[k]=""
+	end
+end
 local socket=require "socket"
 local sv=socket.bind("*",config.port)
 sv:settimeout(0)
@@ -125,7 +147,7 @@ local function req(cl,s)
 		if cl.uri=="ping" then
 			serve(cl,serialize("pong",genuid()))
 		elseif cl.uri=="send" and t[3] then
-			print("'"..serialize(t[1]).."' is sending '"..serialize(t[3]).."' to '"..serialize(t[2]).."'")
+			print(colors.green.."'"..serialize(t[1]).."'"..colors.clear.." is sending "..colors.green.."'"..serialize(t[3]).."' to '"..serialize(t[2]).."'"..colors.clear)
 			for k,v in pairs(queue) do
 				if v.id==t[2] then
 					serve(v,serialize(v.uid,"msg",t[1],t[3]))
@@ -137,7 +159,7 @@ local function req(cl,s)
 			if not cl.uid then
 				print("Bad request "..cl.id)
 			else
-				print("'"..serialize(t[1]).."' is receiving")
+				print(colors.green.."'"..serialize(t[1]).."'"..colors.clear.." is receiving")
 				cl.id=t[1]
 				table.insert(queue,cl)
 			end
@@ -146,7 +168,8 @@ local function req(cl,s)
 		end
 	end
 end
-local ltime=os.clock()
+local ltime=os.time()
+print(colors.green.."Server running on port "..config.port..colors.clear)
 while true do
 	local s=sv:accept()
 	while s do
@@ -161,7 +184,7 @@ while true do
 		end
 		s=sv:accept()
 	end
-	local cdt=os.clock()-ltime
+	local cdt=os.time()-ltime
 	for i=1,getmax(cli) do
 		local cl=cli[i]
 		if cl then
@@ -174,7 +197,7 @@ while true do
 						end
 					end
 				end
-				print("'"..cl.id.."' timed out")
+				print(colors.green.."'"..cl.id.."'"..colors.clear.." timed out")
 				serve(cl,serialize(cl.uid,"timeout"))
 			end
 			local s,e=cl.s:receive(0)
@@ -211,7 +234,7 @@ while true do
 			end
 		end
 	end
-	ltime=os.clock()
+	ltime=os.time()
 	local clt={sv}
 	for k,v in pairs(cli) do
 		table.insert(clt,v.s)
