@@ -39,7 +39,7 @@ local print=print
 if config.rainbow then
 	local oprint=print
 	function print(str)
-		oprint(str:gsub(".",function(s) return "\27["..math.random(31,36).."m"..s end).."\27[0m")
+		oprint(str:gsub(".",function(s) local r=math.random(0,5) return "\27["..(r+31).."m\27["..(((r+math.random(,5))%6)+41).."m"..s end).."\27[0m")
 	end
 end 
 if not config.colors then
@@ -144,7 +144,15 @@ local function req(cl,s)
 	if cl.postlen and not t then
 		close(cl)
 	else
-		if cl.uri=="ping" then
+		if cl.uri=="close" then
+			if cl.uri then
+				local c=queue[cl.uri]
+				if c then
+					serve(c,serialize(c.uid,""))
+				end
+			end
+			serve(cl,serialize(cl.uid,"close"))
+		elseif cl.uri=="ping" then
 			serve(cl,serialize("pong",genuid()))
 		elseif cl.uri=="send" and t[3] then
 			print(colors.green.."'"..serialize(t[1]).."'"..colors.clear.." is sending "..colors.green.."'"..serialize(t[3]).."' to '"..serialize(t[2]).."'"..colors.clear)
@@ -161,7 +169,7 @@ local function req(cl,s)
 			else
 				print(colors.green.."'"..serialize(t[1]).."'"..colors.clear.." is receiving")
 				cl.id=t[1]
-				table.insert(queue,cl)
+				queue[cl.uid]=s
 			end
 		else
 			close(cl)
