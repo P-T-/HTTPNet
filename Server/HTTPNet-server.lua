@@ -3,14 +3,6 @@
 --  By PixelToast
 --
 --  Requires lua 5.1 with luasocket.
---
---  TODO:
---    DOS protection
---    comments
---    moar config options
---    error checking
---    clean up a bit
---    add a reconnect buffer so messages arent lost in the short time the client is offline
 ------------------------------------------------
 
 ------------------------------------------------
@@ -19,34 +11,20 @@
 
 local config={
 	port=1337,
-	
-	colors=false, -- ANSI colors dont work on windows :/
-	rainbow=false, -- i got bored
+	rainbow=false, -- ANSI colors dont work on windows :/
 }
 
 ------------------------------------------------
 -- Server
 ------------------------------------------------
 
-local colors={
-	clear="\27[0m",
-	red="\27[31m",
-	green="\27[32m",
-	yellow="\27[33m",
-	blue="\27[34m",
-}
 local print=print
 if config.rainbow then
 	local oprint=print
 	function print(str)
-		oprint(str:gsub(".",function(s) local r=math.random(0,5) return "\27["..(r+31).."m\27["..(((r+math.random(,5))%6)+41).."m"..s end).."\27[0m")
+		oprint(str:gsub(".",function(s) local r=math.random(0,5) return "\27["..(r+31).."m\27["..(((r+math.random(1,5))%6)+41).."m"..s end).."\27[0m")
 	end
 end 
-if not config.colors then
-	for k,v in pairs(colors) do
-		colors[k]=""
-	end
-end
 local socket=require "socket"
 local sv=socket.bind("*",config.port)
 sv:settimeout(0)
@@ -64,8 +42,10 @@ local function getmax(tbl)
 end
 local function genuid()
 	local o=""
+	local i
 	for l1=1,16 do
-		o=o..string.format("%X",math.random(1,15))
+		i=math.random(0,15)
+		o=o..string.char(i+(math.floor(i/10)*7)+48)
 	end
 	return o
 end
@@ -144,32 +124,63 @@ local function req(cl,s)
 	if cl.postlen and not t then
 		close(cl)
 	else
-		if cl.uri=="close" then
-			if cl.uri then
-				local c=queue[cl.uri]
-				if c then
-					serve(c,serialize(c.uid,""))
+		if cl.uid and (cl.uri=="open" or cl.uri=="close") then
+			local c=queue[cl.uri]
+			if c then
+				if t[1] then
+					local l=cl.uri=="open" or nil
+					if l then
+						print(cl.uid.." opening "..table.concat(t,","))
+					else
+						print(cl.uid.." closing "..table.concat(t,","))
+					end
+					for k,v in pairs(t) do
+						c.chan[v]=l
+					end
+					if not next(c.chan) then
+						serve(c,serialize(c.uid))
+						queue[cl.uri]=nil
+					end
+				else
+					print(cl.uid.." closing all")
+					for k,v in pairs(c.chan) do
+						c.chan[k]=nil
+					end
+					serve(c,serialize(c.uid))
+					queue[cl.uri]=nil
 				end
 			end
-			serve(cl,serialize(cl.uid,"close"))
+			serve(cl,serialize(cl.uid))
+		end
+		if cl.uid and cl.uri=="exit" then
+			print(cl.uid.." is exiting")
+			local c=queue[cl.uid]
+			if c then
+				serve(c,"")
+				queue[cl.uid]=nil
+			end
+			serve(cl,serialize(cl.uid,"exit"))
 		elseif cl.uri=="ping" then
+			print("new client")
 			serve(cl,serialize("pong",genuid()))
 		elseif cl.uri=="send" and t[3] then
-			print(colors.green.."'"..serialize(t[1]).."'"..colors.clear.." is sending "..colors.green.."'"..serialize(t[3]).."' to '"..serialize(t[2]).."'"..colors.clear)
+			print("'"..serialize(t[2]).."' is sending '"..serialize(t[3]).."' to '"..serialize(t[1]).."'")
 			for k,v in pairs(queue) do
-				if v.id==t[2] then
-					serve(v,serialize(v.uid,"msg",t[1],t[3]))
+				if v.chan[t[1]] then
+					serve(v,serialize(v.uid,"msg",t[1],t[2],t[3]))
 					queue[k]=nil
 				end
 			end
 			serve(cl,"")
 		elseif cl.uri=="receive" and t[1] then
 			if not cl.uid then
-				print("Bad request "..cl.id)
+				print("bad request "..cl.uid)
 			else
-				print(colors.green.."'"..serialize(t[1]).."'"..colors.clear.." is receiving")
-				cl.id=t[1]
-				queue[cl.uid]=s
+				print(cl.uid.." is receiving")
+				for k,v in pairs(t) do
+					cl.chan[v]=true
+				end
+				queue[cl.uid]=cl
 			end
 		else
 			close(cl)
@@ -177,7 +188,7 @@ local function req(cl,s)
 	end
 end
 local ltime=os.time()
-print(colors.green.."Server running on port "..config.port..colors.clear)
+print("Server running on port "..config.port)
 while true do
 	local s=sv:accept()
 	while s do
@@ -185,7 +196,7 @@ while true do
 		local a=1
 		while true do
 			if not cli[a] then
-				cli[a]={s=s,head={},i=a,dt=0}
+				cli[a]={s=s,head={},i=a,dt=0,chan={}}
 				break
 			end
 			a=a+1
@@ -205,7 +216,7 @@ while true do
 						end
 					end
 				end
-				print(colors.green.."'"..cl.id.."'"..colors.clear.." timed out")
+				print(cl.uid.." timed out")
 				serve(cl,serialize(cl.uid,"timeout"))
 			end
 			local s,e=cl.s:receive(0)

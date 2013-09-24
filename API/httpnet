@@ -1,13 +1,6 @@
 ------------------------------------------------
 --  HTTPNet API
 --  By PixelToast
---
---  TODO:
---    clean up
---    comments
---    multiple host support
---    multiple channel support
---    not using eroutine
 ------------------------------------------------
 
 ------------------------------------------------
@@ -111,76 +104,149 @@ local function unserialize(t)
 	table.insert(out,s)
 	return out
 end
-local host
-local id
-local uid
-function send(sid,data)
-	http.request(host.."send",serialize(id,sid,data))
-end
-function get(timeout)
-	local timer
-	if timeout then
-		timer=os.startTimer(timeout)
+local cl={}
+local function receive(self)
+	local o={}
+	local cnt=0
+	for k,v in pairs(self.isOpen) do
+		cnt=cnt+1
+		o[cnt]=k
 	end
-	while true do
-		local p={os.pullEvent()}
-		if p[1]=="httpnet_message" then
-			return p[2],p[3]
-		elseif p[1]=="timer" and p[2]==timer then
-			return
+	http.request(self.host.."receive?"..serialize(self.uid),serialize(unpack(o)))
+end
+local f={
+	get=function(self,timeout)
+		local timer
+		if timeout then
+			timer=os.startTimer(timeout)
 		end
-	end
-end
-function close()
-	host,id=nil
-end
-local function receive()
-	http.request(host.."receive?"..uid,serialize(id))
-end
-function setHost(h,p,i)
-	close()
-	local shost="http://"..tostring(h or "localhost")..":"..tostring(p or 1337).."/"
-	local sid=tostring(i or os.getComputerID())
-	local s=http.get(shost.."ping")
-	if s then
-		local t=unserialize(s.readAll())
-		if t then
-			if t[1]=="pong" and t[2] then
-				host=shost
-				id=sid
-				uid=t[2]
-				receive()
-				return true
+		while true do
+			local p={os.pullEvent()}
+			if p[1]=="httpnet_message" and p[2]==self.uid then
+				return p[3],p[4],p[5]
+			elseif p[1]=="timer" and p[2]==timer then
+				return
 			end
 		end
+	end,
+	transmit=function(self,sid,id,data)
+		http.request(self.host.."send",serialize(sid,id,data))
+	end,
+	send=function(self,sid,data)
+		http.request(self.host.."send",serialize(sid,self.id,data))
+	end,
+	exit=function(self)
+		http.request(self.host.."exit?"..serialize(self.uid))
+		while true do
+			local p={os.pullEvent("httpnet_exit")}
+			if p[2]==self.uid then
+				break
+			end
+		end
+		cl[self.uid]=nil
+	end,
+	open=function(self,...)
+		local t={...}
+		if #t==0 then
+			return
+		end
+		local isOpen=self.isOpen
+		local channel=self.channel
+		local req=not next(isOpen)
+		for k,v in pairs(t) do
+			v=tostring(v)
+			if not isOpen[v] then
+				isOpen[v]=true
+			end
+		end
+		if req then
+			receive(self)
+		else
+			http.request(self.host.."open",serialize(self.uid,...))
+		end
+	end,
+	close=function(self,...)
+		local t={...}
+		local isOpen=self.isOpen
+		local channel=self.channel
+		for k,v in pairs(t) do
+			v=tostring(v)
+			isOpen[v]=nil
+		end
+		http.request(self.host.."close",serialize(self.uid,...))
+	end,
+}
+function new(h,p,i)
+	local host="http://"..tostring(h or "localhost")..":"..tostring(p or 1337).."/"
+	local s=http.get(host.."ping")
+	local uid
+	if s then
+		if s.getResponseCode()~=337 then
+			return false
+		end
+		local t=unserialize(s.readAll())
+		if t then
+			if t[1]~="pong" or not t[2] then
+				return false
+			end
+			uid=t[2]
+		else
+			return false
+		end
+	else
+		return false
 	end
-	close()
-	return false
+	local o={
+		host=host,
+		isOpen={},
+		uid=uid,
+		id=i,
+	}
+	for k,v in pairs(f) do
+		o[k]=v
+	end
+	if i then
+		o:open(i)
+	end
+	cl[uid]=o
+	return o
 end
 eroutine.add(function(...)
 	local p={...}
 	if p[1]=="http_success" then
-		if host then
-			if string.sub(p[2],1,#host)==host then
-				eroutine.eatEvent()
-				local text=p[3].readAll()
-				if text~="" then
-					local t=unserialize(text)
-					if t[1]==uid then
-						if t[2]=="msg" then
-							os.queueEvent("httpnet_message",t[3],t[4])
-							receive()
-						elseif t[2]=="timeout" then
-							receive()
-						end
+		local h=false
+		for k,v in pairs(cl) do
+			if string.sub(p[2],1,#v.host)==v.host then
+				h=true
+				break
+			end
+		end
+		if not h then
+			return
+		end
+		eroutine.eatEvent()
+		local text=p[3].readAll()
+		if text~="" then
+			local t=unserialize(text)
+			if t then
+				local c=cl[t[1]]
+				if c then
+					if t[2]=="msg" then
+						os.queueEvent("httpnet_message",c.uid,t[3],t[4],t[5])
+						receive(c)
+					elseif t[2]=="timeout" then
+						receive(c)
+					elseif t[2]=="exit" then
+						os.queueEvent("httpnet_exit",c.uid)
 					end
 				end
 			end
 		end
 	elseif p[1]=="http_failure" then
-		if host then
-			if string.sub(p[2],1,#host)==host then
+		for k,v in pairs(cl) do
+			if string.sub(p[2],1,#v.host)==v.host then
 				eroutine.eatEvent()
+				break
 			end
 		end
 	end
