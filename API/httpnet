@@ -56,16 +56,20 @@ end
 -- main API
 ------------------------------------------------
 
-local function serialize(...)
+function serialize(...)
 	local t={...}
 	local out=""
 	for k,v in pairs(t) do
 		v=tostring(v)
 		for c in v:gmatch(".") do
+			local b=string.byte(c)
 			if c=="\\" then
 				out=out.."\\\\"
 			elseif c=="," then
 				out=out.."\\,"
+			elseif b<32 or b>126 then
+				b=string.format("%X",b)
+				out=out.."\\"..string.rep("0",2-#b)..b
 			else
 				out=out..c
 			end
@@ -76,8 +80,9 @@ local function serialize(...)
 	end
 	return out
 end
-local function unserialize(t)
-	local elevel=0
+function unserialize(t)
+	local clevel=0
+	local e=""
 	local out={}
 	local s=""
 	for char in t:gmatch(".") do
@@ -97,8 +102,17 @@ local function unserialize(t)
 				clevel=0
 			end
 		else
-			s=s..char
-			clevel=0
+			if clevel==0 or not char:match("%x") then
+				s=s..char
+				clevel=0
+			else
+				e=e..char
+				if #e==2 then
+					s=s..string.char(tonumber(e,16))
+					e=""
+					clevel=0
+				end
+			end
 		end
 	end
 	table.insert(out,s)
@@ -177,7 +191,7 @@ local f={
 	end,
 }
 function new(h,p,i)
-	local host="http://"..tostring(h or "localhost")..":"..tostring(p or 1337).."/"
+	local host="http://"..tostring(h or "2130706433")..":"..tostring(p or 1337).."/"
 	local s=http.get(host.."ping")
 	local uid
 	if s then
