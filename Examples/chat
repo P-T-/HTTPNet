@@ -7,16 +7,17 @@ local name=read()
 write("ID > ")
 local sid=read()
 shell.run("clear")
-print("ID: "..(tArgs[3] or os.getComputerID()))
-httpnet.setHost(...)
+tArgs[3]=tArgs[3] or os.getComputerID()
+print("ID: "..tArgs[3])
+local h=httpnet.new(...)
 if sid~="" then
-	httpnet.send(sid,"chat")
+	h:send(sid,"chat")
 end
 while true do
-	local i,d=httpnet.get()
+	local i,d=h:get()
 	if (sid==i or sid=="") and d=="chat" then
 		if sid=="" then
-			httpnet.send(i,"chat")
+			h:send(i,"chat")
 		end
 		sid=i
 		break
@@ -63,8 +64,8 @@ local function renderchat()
 end
 while true do
 	local p={os.pullEvent()}
-	if p[1]=="httpnet_message" and p[2]==sid then
-		table.insert(chatlog,p[3])
+	if p[1]=="httpnet_message" and p[2]==h.uid then
+		table.insert(chatlog,p[5])
 		renderchat()
 	end
 	local sEvent, param = unpack(p)
