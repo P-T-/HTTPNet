@@ -1,3 +1,5 @@
+news: im banned for 3 days because of "Forum-breakingly-long strings in posts.", which was just me accidentally not putting newlines making my text expand off the screen -_-
+
 <p align="center"><img src="http://i.imgur.com/FeNFuvI.png"></p>
 
 A ComputerCraft API that allows instant socket like connections using HTTP<br>
